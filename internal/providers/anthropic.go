@@ -30,6 +30,15 @@ type AnthropicResponse struct {
 	} `json:"content"`
 }
 
+type AnthropicModelsResponse struct {
+	Data []struct {
+		ID          string `json:"id"`
+		Type        string `json:"type"`
+		DisplayName string `json:"display_name"`
+		CreatedAt   string `json:"created_at"`
+	} `json:"data"`
+}
+
 func (p *AnthropicProvider) GenerateContent(ctx context.Context, prompt string, model string, apiKey string) (string, error) {
 	reqBody := AnthropicRequest{
 		Model:     model,
@@ -84,4 +93,46 @@ func (p *AnthropicProvider) GenerateContent(ctx context.Context, prompt string, 
 	}
 
 	return response.Content[0].Text, nil
+}
+
+func (p *AnthropicProvider) ListModels(ctx context.Context, apiKey string) ([]ModelInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.anthropic.com/v1/models", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("x-api-key", apiKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to make request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API error: %s, body: %s", resp.Status, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var modelsResp AnthropicModelsResponse
+	if err := json.Unmarshal(body, &modelsResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	var models []ModelInfo
+	for _, model := range modelsResp.Data {
+		models = append(models, ModelInfo{
+			ID:   model.ID,
+			Name: model.DisplayName,
+		})
+	}
+
+	return models, nil
 }

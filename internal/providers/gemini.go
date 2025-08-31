@@ -33,3 +33,21 @@ func (p *GeminiProvider) GenerateContent(ctx context.Context, prompt string, mod
 
 	return result.Text(), nil
 }
+
+func (p *GeminiProvider) ListModels(ctx context.Context, apiKey string) ([]ModelInfo, error) {
+	// Google Gemini doesn't have a direct models API endpoint in the same way
+	// We'll return the known Gemini models for now
+	// In a future version, we could use the REST API directly
+
+	// For now, return our known models since Gemini's SDK doesn't expose ListModels
+	knownModels := []ModelInfo{
+		{ID: "gemini-1.5-pro", Name: "Gemini 1.5 Pro"},
+		{ID: "gemini-1.5-flash", Name: "Gemini 1.5 Flash"},
+		{ID: "gemini-1.5-pro-002", Name: "Gemini 1.5 Pro 002"},
+		{ID: "gemini-1.5-flash-002", Name: "Gemini 1.5 Flash 002"},
+		{ID: "gemini-pro", Name: "Gemini Pro"},
+		{ID: "gemini-pro-vision", Name: "Gemini Pro Vision"},
+	}
+
+	return knownModels, nil
+}

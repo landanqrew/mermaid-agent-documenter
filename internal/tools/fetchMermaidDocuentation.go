@@ -17,15 +17,15 @@ func (t *FetchMermaidDocumentationTool) Description() string {
 	return "Fetch Mermaid documentation and syntax information"
 }
 
-func (t *FetchMermaidDocumentationTool) Schema() map[string]interface{} {
-	return map[string]interface{}{
+func (t *FetchMermaidDocumentationTool) Schema() map[string]any {
+	return map[string]any{
 		"type": "object",
-		"properties": map[string]interface{}{
-			"topic": map[string]interface{}{
+		"properties": map[string]any{
+			"topic": map[string]any{
 				"type":        "string",
 				"description": "Specific Mermaid topic to search for (optional)",
 			},
-			"version": map[string]interface{}{
+			"version": map[string]any{
 				"type":        "string",
 				"description": "Mermaid version to get docs for (optional)",
 			},
@@ -33,18 +33,13 @@ func (t *FetchMermaidDocumentationTool) Schema() map[string]interface{} {
 	}
 }
 
-func (t *FetchMermaidDocumentationTool) Execute(args map[string]interface{}) ToolResult {
+func (t *FetchMermaidDocumentationTool) Execute(args map[string]any) ToolResult {
 	var topic string
 
 	if t, exists := args["topic"]; exists {
 		if topicStr, ok := t.(string); ok {
 			topic = topicStr
 		}
-	}
-
-	// Version parameter is accepted but not used in current implementation
-	if _, exists := args["version"]; exists {
-		// Could be used for version-specific documentation in the future
 	}
 
 	// For now, we'll fetch from the official Mermaid documentation
@@ -78,7 +73,7 @@ func (t *FetchMermaidDocumentationTool) Execute(args map[string]interface{}) Too
 
 	return ToolResult{
 		Success: true,
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"url":     url,
 			"content": content,
 		},

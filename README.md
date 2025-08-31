@@ -44,18 +44,33 @@ sudo mv mad /usr/local/bin/
 
 ## ⚙️ Setup and Configuration
 
-### 1. Initialize the Tool
+### 1. Initialize the Global Environment
 ```bash
-# Create configuration and directories
+# Initialize global configuration
 ./mad init
 ```
 
 This creates:
-- `~/mermaid-agent-documenter/config.json` - Configuration file
-- `~/mermaid-agent-documenter/output/` - Generated documentation
-- `~/mermaid-agent-documenter/logs/` - Execution logs
+- `~/mermaid-agent-documenter/config.json` - Global configuration file
+- `~/mermaid-agent-documenter/logs/` - Global execution logs
 
-### 2. Set API Key
+### 2. Create a Project
+```bash
+# Create a new project in the current directory
+./mad init my-project
+
+# Or create a project for an e-commerce application
+./mad init ecommerce-app
+```
+
+This creates:
+- `my-project/` - Project directory
+- `my-project/config.json` - Project reference in global config
+- `my-project/transcripts/` - Place your transcript files here
+- `my-project/out/` - Generated diagrams and documentation
+- `my-project/logs/` - Project-specific execution logs
+
+### 3. Set API Key
 Choose one provider and set the corresponding environment variable:
 
 ```bash
@@ -69,7 +84,7 @@ export ANTHROPIC_API_KEY="your-anthropic-api-key-here"
 export GOOGLE_API_KEY="your-google-api-key-here"
 ```
 
-### 3. Configure Provider (Optional)
+### 4. Configure Provider (Optional)
 Edit `~/mermaid-agent-documenter/config.json` to change:
 - Default provider (`"provider": "openai"`)
 - Model selection per provider
@@ -80,12 +95,33 @@ Edit `~/mermaid-agent-documenter/config.json` to change:
 
 ### Basic Workflow
 
-1. **Prepare your transcript** - Create a text file with your application walkthrough/recording
-2. **Run the agent** - Use the CLI to analyze and generate documentation
-3. **Review output** - Check the generated Markdown files with Mermaid diagrams
+1. **Create a project** - Initialize a project for your application
+2. **Add transcripts** - Place your application walkthrough files in the project's `transcripts/` directory
+3. **Run the agent** - Use the CLI to analyze transcripts and generate documentation
+4. **Review output** - Check the generated Markdown files with Mermaid diagrams in the `out/` directory
+
+### Example Workflow
+
+```bash
+# 1. Create a project
+./mad init my-auth-app
+
+# 2. Add your transcript file
+echo "This is a walkthrough of our user authentication system..." > my-auth-app/transcripts/auth-walkthrough.txt
+
+# 3. Generate documentation
+cd my-auth-app
+../mad run auth-walkthrough.txt --dry-run  # Preview what will be generated
+
+# 4. Generate the actual documentation
+../mad run auth-walkthrough.txt
+
+# 5. Check the output
+ls out/docs/diagrams/
+```
 
 ### Example Transcript File
-Create a file called `my-app-transcript.txt`:
+Create `my-auth-app/transcripts/auth-walkthrough.txt`:
 
 ```
 This is a walkthrough of our user authentication system.
@@ -101,23 +137,20 @@ The API gateway then sends the JWT back to the frontend, and the user is logged 
 
 ### Generate Documentation
 ```bash
-# Dry run (safe - shows what would be done without executing)
-./mad run my-app-transcript.txt --dry-run
-
-# Generate documentation (with confirmation prompt)
-./mad run my-app-transcript.txt
-
-# Skip confirmation
-./mad run my-app-transcript.txt --yes
+# From within your project directory
+./mad run auth-walkthrough.txt --dry-run   # Preview generation
+./mad run auth-walkthrough.txt             # Generate with confirmation
+./mad run auth-walkthrough.txt --yes       # Skip confirmation
 ```
 
 ## 📋 Command Reference
 
-### `mad init`
-Initialize the working directory and create default configuration.
+### `mad init [project-name]`
+Initialize a new project or the global environment.
 
 ```bash
-./mad init
+./mad init                    # Initialize global environment
+./mad init my-project         # Create new project called "my-project"
 ```
 
 ### `mad run [transcript]`
@@ -129,6 +162,10 @@ Run the agent on a transcript to generate documentation.
 Flags:
   --dry-run   Print planned actions without executing
   --yes       Skip confirmation prompts
+
+Notes:
+- If run from within a project directory, uses project's transcripts/ and out/ directories
+- If no current project is set, uses global configuration
 ```
 
 ### `mad plan [transcript]`
@@ -148,28 +185,147 @@ Validate a generated manifest or Mermaid file for syntax correctness.
 ./mad validate docs/diagrams/auth/sequence-login.md
 ```
 
-### `mad config`
-Manage configuration settings.
+### `mad config secrets set <provider> <api-key>`
+Set API key for a model provider.
 
 ```bash
-./mad config  # Shows current configuration
+./mad config secrets set openai "sk-your-openai-key-here"
+./mad config secrets set anthropic "sk-ant-your-anthropic-key"
+./mad config secrets set google "your-google-api-key"
+```
+
+### `mad config secrets list`
+List configured API keys (without showing actual keys).
+
+```bash
+./mad config secrets list
+```
+
+### `mad config provider set <provider>`
+Set the default LLM provider.
+
+```bash
+./mad config provider set openai      # Use OpenAI models
+./mad config provider set anthropic   # Use Anthropic models
+./mad config provider set google      # Use Google models
+```
+
+### `mad config provider list`
+List available providers and current selection.
+
+```bash
+./mad config provider list
+```
+
+### `mad config model set <model>`
+Set the model for the current provider.
+
+```bash
+# For OpenAI
+./mad config model set gpt-4o
+./mad config model set gpt-4o-mini
+
+# For Anthropic
+./mad config model set claude-3-5-sonnet-20241022
+./mad config model set claude-3-haiku-20240307
+
+# For Google
+./mad config model set gemini-1.5-pro
+./mad config model set gemini-1.5-flash
+
+# You can also use any custom model name
+./mad config model set my-custom-model
+```
+
+**Note**: You can use any model name that the provider supports. The system will attempt to use it even if it's not in our known models list.
+
+### `mad config model list`
+List available models for the current provider.
+
+```bash
+./mad config model list
+```
+
+Shows both "known" models (from our curated list) and "custom" models you've configured.
+
+### `mad config model refresh`
+Query provider APIs for current model availability.
+
+```bash
+./mad config model refresh
+```
+
+**Features**:
+- Connects to provider APIs to get live model lists
+- Falls back to known models if API is unavailable
+- Shows new models not in our curated list
+- Displays model status (known, custom, new)
+- No API key required (uses known models as fallback)
+
+**Example Output**:
+```
+🔄 Refreshing models for Openai...
+📡 Fetching from provider API...
+✅ Found 15 models from API:
+
+📋 Known Models (available via API):
+✅ gpt-4o (current)
+○ gpt-4o-mini
+○ gpt-4-turbo
+
+🆕 New/Discovered Models:
+○ gpt-4o-new-variant
+○ gpt-4-turbo-new
+
+💡 Tip: You can use these new models with:
+   mad config model set <model-name>
+```
+
+### `mad config project set <project-directory>`
+Set the current project directory.
+
+```bash
+./mad config project set /path/to/my-project
+./mad config project set ./my-auth-app
 ```
 
 ## 📁 Output Structure
 
-Generated files are organized in `~/mermaid-agent-documenter/output/docs/diagrams/`:
+### Project-Based Organization
+When using projects, generated files are organized in your project's `out/` directory:
 
 ```
-output/
-├── docs/
-│   └── diagrams/
-│       ├── auth/
-│       │   ├── sequence-login.md
-│       │   └── flowchart-auth.md
-│       ├── user/
-│       │   └── class-user-model.md
-│       └── api/
-│           └── sequence-api-flow.md
+my-project/
+├── transcripts/
+│   └── auth-walkthrough.txt
+├── out/
+│   ├── docs/
+│   │   └── diagrams/
+│   │       ├── auth/
+│   │       │   ├── sequence-login.md
+│   │       │   └── flowchart-auth.md
+│   │       ├── user/
+│   │       │   └── class-user-model.md
+│   │       └── api/
+│   │           └── sequence-api-flow.md
+│   └── logs/
+│       └── execution-log.jsonl
+└── config.json (references global config)
+```
+
+### Global Organization (Legacy)
+If no project is used, files go to `~/mermaid-agent-documenter/output/`:
+
+```
+~/mermaid-agent-documenter/
+├── output/
+│   └── docs/
+│       └── diagrams/
+│           ├── auth/
+│           │   ├── sequence-login.md
+│           │   └── flowchart-auth.md
+│           └── ...
+└── config.json
 ```
 
 ### Example Generated File
@@ -197,7 +353,8 @@ sequenceDiagram
 
 ## 🔧 Configuration Options
 
-The `config.json` file supports the following settings:
+### Global Configuration
+The main `~/mermaid-agent-documenter/config.json` file supports the following settings:
 
 ```json
 {
@@ -223,9 +380,27 @@ The `config.json` file supports the following settings:
     "costCeilingUsd": 1.0         // Max cost per run
   },
   "confidenceThreshold": 0.90,    // Min confidence for file writes
-  "outDir": "~/mermaid-agent-documenter/output"
+  "outDir": "~/mermaid-agent-documenter/output",
+  "currentProject": {             // Currently active project
+    "name": "my-auth-app",
+    "rootDir": "/path/to/my-auth-app",
+    "createdAt": "2025-01-01T12:00:00Z"
+  }
 }
 ```
+
+### Project Structure
+When you create a project with `mad init my-project`, it creates:
+
+- **Project Directory**: Contains all project-specific files
+- **Transcripts Directory**: `my-project/transcripts/` - Place your transcript files here
+- **Output Directory**: `my-project/out/` - Generated documentation goes here
+- **Logs Directory**: `my-project/logs/` - Project-specific execution logs
+
+### Switching Projects
+Projects are managed through the global config. The `currentProject` field determines which project's directories are used for transcripts and output.
+
+To switch projects, you would manually edit the global `config.json` or reinitialize with a different project name.
 
 ## 🎯 Supported Diagram Types
 
@@ -312,6 +487,42 @@ Checkout process starts when user clicks 'Buy Now'. Cart items are validated, pa
 - `docs/diagrams/payment/flowchart-payment-processing.md` - Payment validation logic
 - `docs/diagrams/order/state-order-lifecycle.md` - Order state transitions
 
+## 🧠 Model Management
+
+The CLI includes smart model management that adapts to the rapidly changing AI landscape:
+
+### **Flexible Model Support**
+- **Known Models**: Curated list of popular, stable models for each provider
+- **Custom Models**: Support for any model name the provider accepts
+- **Automatic Detection**: Distinguishes between known and custom models
+- **Future-Proof**: No need to update the code when new models are released
+
+### **Provider-Specific Models**
+- **OpenAI**: gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-3.5-turbo, etc.
+- **Anthropic**: claude-3-5-sonnet, claude-3-haiku, claude-3-opus, etc.
+- **Google**: gemini-1.5-pro, gemini-1.5-flash, gemini-pro, etc.
+
+### **Model Commands**
+```bash
+# List all available models (known + custom)
+./mad config model list
+
+# Set any model (known or custom)
+./mad config model set gpt-4o                    # Known model
+./mad config model set my-custom-model           # Custom model
+
+# Query live API for current models
+./mad config model refresh                       # Get live model list
+```
+
+### **How It Works**
+1. **Known Models**: Curated list of popular models (updated periodically)
+2. **Custom Models**: Any model name you specify - the system attempts to use it
+3. **Live API Queries**: `refresh` command queries provider APIs for current models
+4. **Smart Validation**: Warns about custom models but doesn't block them
+5. **Fallback Support**: Uses known models when API is unavailable
+6. **Provider Switching**: Model selection is remembered per provider
+
 ## 🤝 Contributing
 
 1. Fork the repository
@@ -319,6 +530,12 @@ Checkout process starts when user clicks 'Buy Now'. Cart items are validated, pa
 3. Make your changes
 4. Add tests for new functionality
 5. Submit a pull request
+
+### **Model Updates**
+When contributing model updates:
+- Update the `getKnownModels()` function in `cmd/config.go`
+- Test with both known and custom model names
+- Ensure provider switching works correctly
 
 ## 📄 License
 
@@ -329,3 +546,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Built with [Cobra CLI](https://cobra.dev/) for the command-line interface
 - Uses [Google GenAI](https://ai.google.dev/) for Gemini integration
 - Mermaid diagram syntax validation and rendering
+- Flexible model management inspired by modern AI tooling patterns
