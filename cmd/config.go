@@ -240,6 +240,34 @@ Examples:
 	},
 }
 
+// projectListCmd represents the project list command
+var projectListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List current project",
+	Long: `List current project settings.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		config, err := loadConfig()
+		if err != nil {
+			fmt.Printf("Error loading config: %v\n", err)
+			os.Exit(1)
+		}
+
+		currentProject := ""
+		if config.CurrentProject != nil {
+			currentProject = config.CurrentProject.Name
+		}
+
+		if currentProject == "" {
+			fmt.Println("No current project defined")
+			fmt.Println("You can set your current project configurations with 'mad config project set <project-directory>'")
+			return
+		}
+		
+		fmt.Printf("Current Project: %s\n", currentProject)
+		fmt.Printf("Project Directory: %s\n", config.CurrentProject.RootDir)
+	},
+}
+
 // providerCmd represents the provider command
 var providerCmd = &cobra.Command{
 	Use:   "provider",
@@ -736,6 +764,7 @@ func init() {
 	// Add project subcommand
 	configCmd.AddCommand(projectCmd)
 	projectCmd.AddCommand(projectSetCmd)
+	projectCmd.AddCommand(projectListCmd)
 
 	// Add provider subcommand
 	configCmd.AddCommand(providerCmd)

@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/landanqrew/mermaid-agent-documenter/internal/providers"
@@ -48,8 +51,10 @@ type AgentConfig struct {
 	CostCeilingUsd      float64
 	ConfidenceThreshold float64
 	OutputDir           string
+	LogsDir             string
 	RedactPII           bool
 	StoreChainOfThought bool
+	DocumentationTypes  []string
 }
 
 func NewMermaidDocumenterAgent(config *AgentConfig) *MermaidDocumenterAgent {
@@ -120,8 +125,30 @@ func (a *MermaidDocumenterAgent) Run(ctx context.Context) error {
 				continue
 			}
 
+			// Modify file paths to use output directory if they're relative
+			modifiedArgs := a.modifyFilePaths(output.Args)
+
 			// Execute the tool
-			result := tools.ExecuteTool(output.Tool, a.argsToJSON(output.Args))
+			result := tools.ExecuteTool(output.Tool, a.argsToJSON(modifiedArgs))
+
+			if result.Success && result.Data != nil {
+				fmt.Printf("✅ Tool completed successfully\n")
+			} else if !result.Success {
+				fmt.Printf("❌ Tool failed: %s\n", result.Error)
+
+				// If the tool failed, add error context to guide the next action
+				errorMsg := fmt.Sprintf("Tool execution failed: %s. ", result.Error)
+				if strings.Contains(result.Error, "Mermaid CLI error") {
+					errorMsg += "This is likely due to invalid Mermaid syntax. Check your diagram syntax, especially ER diagrams which should use semicolons (;) not commas (,) to separate attributes. "
+				}
+				errorMsg += "Please fix the issue and try again, or return a final manifest if you cannot resolve it."
+
+				conversation = append(conversation, map[string]interface{}{
+					"role":    "system",
+					"content": errorMsg,
+				})
+			}
+
 			resultStr := fmt.Sprintf("Tool result: %v", result)
 
 			conversation = append(conversation, map[string]interface{}{
@@ -160,7 +187,10 @@ func (a *MermaidDocumenterAgent) Run(ctx context.Context) error {
 			return fmt.Errorf("clarification needed")
 
 		default:
-			return fmt.Errorf("unknown output type: %s", output.Type)
+			fmt.Printf("⚠️  Unknown output type: %s\n", output.Type)
+			// For unknown types, try to continue with the next step
+			fmt.Printf("🔄 Continuing with next step...\n")
+			continue
 		}
 
 		a.StepCount++
@@ -170,24 +200,40 @@ func (a *MermaidDocumenterAgent) Run(ctx context.Context) error {
 }
 
 func (a *MermaidDocumenterAgent) buildSystemPrompt() string {
-	return `You are "Mermaid Documenter Agent". Read application transcripts and produce accurate Markdown docs with Mermaid diagrams. Prefer multiple small, focused diagrams. Use verbatim labels from the transcript where possible. Include 2–3 sentence context descriptions per file, plus assumptions and openQuestions only when necessary.
+	content := "## Summary\\n\\nThe transcript describes a GoCarWash application.\\n\\n```mermaid\\ngraph TD\\n    A[User] --> B[App]\\n```"
 
-Diagram policy: allowed types sequence|flowchart|class|er|state|journey|graph; default direction LR; ≤ ~40 nodes; split by concern. Validate Mermaid syntax.
+	basePrompt := `You are Mermaid Documenter Agent.
 
-When confident (≥ 0.90), issue a single tool_call to writeFileContents per file with the complete Markdown content. Otherwise, emit a clarification with targeted questions.
+TASK: Create documentation with Mermaid diagrams and generate SVG images.
 
-Available tools:
-- readDirectories(path): List files and directories
-- readFileContents(path, maxBytes?): Read file contents
-- writeFileContents(path, content, createDirs=true, overwrite="explicit"): Write files
-- getUserInput(prompt): Get user input
-- fetchMermaidDocumentation(topic?, version?): Get Mermaid docs
-- logEvent(level, message, data?): Log events
+REQUIRED SEQUENCE:
+1. FIRST: Use writeFileContents to create summary.md with VALID Mermaid diagrams
+2. SECOND: Use generateMermaidImage to convert the Markdown file to SVG images
+3. THIRD: Return final manifest ONLY after both files are created
 
-Respond ONLY with JSON envelopes:
-{"type":"tool_call","tool":"writeFileContents","args":{...},"confidence":0.92,"rationale":"..."}
-{"type":"final","manifest":{...},"confidence":0.94,"rationale":"..."}
-{"type":"clarification","questions":[...],"confidence":0.62}`
+MERMAID SYNTAX RULES:
+- For ER diagrams: Use semicolons (;) to separate attributes: Site {int id; string name}
+- Do NOT use commas (,) in attribute lists
+- Use proper Mermaid syntax to avoid parsing errors
+
+IMPORTANT: You MUST call generateMermaidImage as a separate tool call after creating the Markdown file. Do NOT claim SVG generation in the final manifest unless you actually called the generateMermaidImage tool.
+
+Return ONLY JSON:
+
+TOOL CALL 1 (create documentation):
+{"type":"tool_call","tool":"writeFileContents","args":{"path":"summary.md","content":"` + content + `","overwrite":"allow"},"confidence":0.95,"rationale":"creating documentation"}
+
+TOOL CALL 2 (generate images):
+{"type":"tool_call","tool":"generateMermaidImage","args":{"inputFile":"summary.md","outputFile":"summary","format":"svg"},"confidence":0.95,"rationale":"generating SVG images"}
+
+FINAL RESULT (only after both steps complete):
+{"type":"final","manifest":{"summary.md":"created","summary.svg":"generated"},"confidence":0.95,"rationale":"documentation complete"}`
+
+	if len(a.Config.DocumentationTypes) > 0 {
+		basePrompt = strings.Replace(basePrompt, "summary", strings.Join(a.Config.DocumentationTypes, "_"), 1)
+	}
+
+	return basePrompt
 }
 
 func (a *MermaidDocumenterAgent) buildConversationString(conversation []map[string]interface{}) string {
@@ -199,12 +245,270 @@ func (a *MermaidDocumenterAgent) buildConversationString(conversation []map[stri
 }
 
 func (a *MermaidDocumenterAgent) parseStructuredOutput(response string) (*StructuredOutput, error) {
-	// Try to parse as JSON directly
-	var output StructuredOutput
-	if err := json.Unmarshal([]byte(response), &output); err != nil {
-		return nil, err
+	response = strings.TrimSpace(response)
+
+	// First, try to detect if this is an API error response
+	if a.isAPIErrorResponse(response) {
+		return nil, fmt.Errorf("API error in response: %s", response)
 	}
+
+	// Clean the response by removing markdown code blocks
+	response = a.cleanMarkdownCodeBlocks(response)
+
+	// Try to extract the first valid JSON object from the response
+	jsonObjects := a.extractJSONObject(response)
+	if len(jsonObjects) == 0 {
+		return nil, fmt.Errorf("no valid JSON objects found in response: %s", response)
+	}
+
+	// Parse the first JSON object
+	var output StructuredOutput
+	firstObject := jsonObjects[0]
+
+	// Try to fix common JSON issues before parsing
+	firstObject = a.fixCommonJSONIssues(firstObject)
+
+	if err := json.Unmarshal([]byte(firstObject), &output); err != nil {
+		// If JSON parsing fails, provide more context and debugging info
+		fmt.Printf("🔍 JSON Parsing Debug:\n")
+		fmt.Printf("  📄 Raw response length: %d characters\n", len(response))
+		fmt.Printf("  📄 First object length: %d characters\n", len(firstObject))
+		fmt.Printf("  📄 First object preview: %s...\n", firstObject[:min(200, len(firstObject))])
+		fmt.Printf("  ❌ JSON Error: %v\n", err)
+
+		return nil, fmt.Errorf("failed to parse response as structured output JSON: %w. First object: %s", err, firstObject)
+	}
+
+	// Validate the parsed output has required fields
+	if output.Type == "" {
+		return nil, fmt.Errorf("parsed output missing required 'type' field")
+	}
+
 	return &output, nil
+}
+
+// cleanMarkdownCodeBlocks removes markdown code block formatting from the response
+func (a *MermaidDocumenterAgent) cleanMarkdownCodeBlocks(response string) string {
+	response = strings.TrimSpace(response)
+
+	// Handle various markdown code block formats
+	if strings.HasPrefix(response, "```json") {
+		// Remove opening marker
+		response = strings.TrimPrefix(response, "```json")
+		// Remove closing marker if present
+		if strings.HasSuffix(response, "```") {
+			response = strings.TrimSuffix(response, "```")
+		}
+	} else if strings.HasPrefix(response, "```") {
+		// Remove generic code block markers
+		response = strings.TrimPrefix(response, "```")
+		if strings.HasSuffix(response, "```") {
+			response = strings.TrimSuffix(response, "```")
+		}
+	}
+
+	return strings.TrimSpace(response)
+}
+
+// extractJSONObject extracts individual JSON objects from a concatenated JSON string
+func (a *MermaidDocumenterAgent) extractJSONObject(response string) []string {
+	var objects []string
+
+	// First, try to parse the entire response as a single JSON object
+	var temp interface{}
+	if err := json.Unmarshal([]byte(response), &temp); err == nil {
+		// If it parses successfully, return it as the only object
+		return []string{response}
+	}
+
+	// If that fails, try a simpler approach: split by "}{" and add back the braces
+	if strings.Contains(response, "}{") {
+		parts := strings.Split(response, "}{")
+
+		for i, part := range parts {
+			var obj string
+			if i == 0 {
+				// First part: add opening brace
+				obj = part + "}"
+			} else if i == len(parts)-1 {
+				// Last part: add closing brace
+				obj = "{" + part
+			} else {
+				// Middle parts: add both braces
+				obj = "{" + part + "}"
+			}
+
+			// Test if this is valid JSON
+			var temp interface{}
+			if err := json.Unmarshal([]byte(obj), &temp); err == nil {
+				objects = append(objects, obj)
+			}
+		}
+	}
+
+	// If splitting didn't work, try the brace-counting approach as fallback
+	if len(objects) == 0 {
+		objects = a.extractJSONObjectBraceCounting(response)
+	}
+
+	return objects
+}
+
+// fixCommonJSONIssues attempts to fix common JSON formatting issues
+func (a *MermaidDocumenterAgent) fixCommonJSONIssues(jsonStr string) string {
+	// Remove any trailing commas before closing braces/brackets
+	jsonStr = strings.ReplaceAll(jsonStr, ",}", "}")
+	jsonStr = strings.ReplaceAll(jsonStr, ",]", "]")
+
+	// Ensure proper JSON structure
+	jsonStr = strings.TrimSpace(jsonStr)
+
+	return jsonStr
+}
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// modifyFilePaths modifies file paths in tool arguments to use the output directory
+func (a *MermaidDocumenterAgent) modifyFilePaths(args map[string]interface{}) map[string]interface{} {
+	modifiedArgs := make(map[string]interface{})
+
+	// Copy all original args
+	for k, v := range args {
+		modifiedArgs[k] = v
+	}
+
+	// Check if there's a path argument and modify it if it's relative
+	if pathVal, exists := args["path"]; exists {
+		if pathStr, ok := pathVal.(string); ok {
+			// If path is relative (doesn't start with / or ~), prepend output directory
+			if !strings.HasPrefix(pathStr, "/") && !strings.HasPrefix(pathStr, "~") && !filepath.IsAbs(pathStr) {
+				modifiedPath := filepath.Join(a.Config.OutputDir, pathStr)
+				modifiedArgs["path"] = modifiedPath
+			}
+		}
+	}
+
+	return modifiedArgs
+}
+
+// extractJSONObjectBraceCounting uses brace counting to extract JSON objects
+func (a *MermaidDocumenterAgent) extractJSONObjectBraceCounting(response string) []string {
+	var objects []string
+	var currentObject strings.Builder
+	braceCount := 0
+	inString := false
+	escapeNext := false
+
+	for _, char := range response {
+		currentObject.WriteRune(char)
+
+		switch char {
+		case '"':
+			if !escapeNext {
+				inString = !inString
+			}
+		case '\\':
+			escapeNext = !escapeNext
+			continue
+		case '{':
+			if !inString {
+				braceCount++
+			}
+		case '}':
+			if !inString {
+				braceCount--
+				if braceCount == 0 {
+					// We've found a complete JSON object
+					obj := strings.TrimSpace(currentObject.String())
+					if obj != "" {
+						objects = append(objects, obj)
+					}
+					currentObject.Reset()
+				}
+			}
+		}
+
+		if char != '\\' {
+			escapeNext = false
+		}
+	}
+
+	return objects
+}
+
+// completePartialJSONObject attempts to complete a partial JSON object
+func (a *MermaidDocumenterAgent) completePartialJSONObject(partial string) string {
+	// Count braces to see what's missing
+	openBraces := strings.Count(partial, "{")
+	closeBraces := strings.Count(partial, "}")
+
+	if openBraces <= closeBraces {
+		return "" // Not a partial object or already complete
+	}
+
+	// Add missing closing braces
+	completed := partial
+	for i := 0; i < openBraces-closeBraces; i++ {
+		completed += "}"
+	}
+
+	// Test if it's now valid JSON
+	var temp interface{}
+	if err := json.Unmarshal([]byte(completed), &temp); err == nil {
+		return completed
+	}
+
+	return "" // Couldn't complete it
+}
+
+// isAPIErrorResponse checks if the response appears to be an API error rather than our expected output
+func (a *MermaidDocumenterAgent) isAPIErrorResponse(response string) bool {
+	// Check for common API error patterns
+	errorPatterns := []string{
+		"Error 400",
+		"Error 401",
+		"Error 403",
+		"Error 404",
+		"API key not valid",
+		"Model not found",
+		"Invalid model",
+		"unsupported model",
+		"model does not exist",
+		"INVALID_ARGUMENT",
+		"PERMISSION_DENIED",
+		"NOT_FOUND",
+	}
+
+	responseLower := strings.ToLower(response)
+	for _, pattern := range errorPatterns {
+		if strings.Contains(responseLower, strings.ToLower(pattern)) {
+			return true
+		}
+	}
+
+	// Check if it looks like a JSON error object
+	if strings.HasPrefix(strings.TrimSpace(response), "{") {
+		var temp map[string]interface{}
+		if err := json.Unmarshal([]byte(response), &temp); err == nil {
+			// It's valid JSON, check if it has error fields
+			if _, hasError := temp["error"]; hasError {
+				return true
+			}
+			if _, hasMessage := temp["message"]; hasMessage {
+				if _, hasCode := temp["code"]; hasCode {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
 }
 
 func (a *MermaidDocumenterAgent) argsToJSON(args map[string]interface{}) string {
@@ -213,8 +517,67 @@ func (a *MermaidDocumenterAgent) argsToJSON(args map[string]interface{}) string 
 }
 
 func (a *MermaidDocumenterAgent) logInteraction(conversation []map[string]interface{}, response string, output *StructuredOutput) {
-	// TODO: Implement proper logging to logs.jsonl
 	fmt.Printf("Step %d: %s (confidence: %.2f)\n", a.StepCount+1, output.Type, output.Confidence)
+
+	// Skip logging if LogsDir is not set
+	if a.Config.LogsDir == "" {
+		return
+	}
+
+	// Create logs directory if it doesn't exist
+	if err := os.MkdirAll(a.Config.LogsDir, 0755); err != nil {
+		fmt.Printf("Warning: Failed to create logs directory: %v\n", err)
+		return
+	}
+
+	// Create log entry
+	logEntry := map[string]interface{}{
+		"timestamp":   time.Now().Format(time.RFC3339),
+		"run_id":      a.RunID,
+		"step":        a.StepCount + 1,
+		"provider":    a.Config.Provider,
+		"model":       a.Config.Model,
+		"output_type": output.Type,
+		"confidence":  output.Confidence,
+		"rationale":   output.Rationale,
+	}
+
+	// Add chain of thought if enabled
+	if a.Config.StoreChainOfThought {
+		logEntry["conversation"] = conversation
+		logEntry["response"] = response
+	}
+
+	// Add tool information if applicable
+	if output.Type == "tool_call" {
+		logEntry["tool"] = output.Tool
+		logEntry["args"] = output.Args
+	}
+
+	// Add final manifest if applicable
+	if output.Type == "final" {
+		logEntry["manifest"] = output.Manifest
+	}
+
+	// Marshal to JSON
+	jsonData, err := json.Marshal(logEntry)
+	if err != nil {
+		fmt.Printf("Warning: Failed to marshal log entry: %v\n", err)
+		return
+	}
+
+	// Write to logs.jsonl file
+	logFilePath := filepath.Join(a.Config.LogsDir, "logs.jsonl")
+	file, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Printf("Warning: Failed to open log file: %v\n", err)
+		return
+	}
+	defer file.Close()
+
+	if _, err := file.WriteString(string(jsonData) + "\n"); err != nil {
+		fmt.Printf("Warning: Failed to write to log file: %v\n", err)
+	}
 }
 
 func (a *MermaidDocumenterAgent) processFinalManifest(manifest map[string]interface{}) {

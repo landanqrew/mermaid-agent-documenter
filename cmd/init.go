@@ -68,7 +68,7 @@ func defaultConfig() *Config {
 			PIIRedaction: true,
 		},
 		Limits: LimitsConfig{
-			MaxSteps:       12,
+			MaxSteps:       25,
 			RunTimeoutSec:  300,
 			TokenBudget:    100000,
 			CostCeilingUsd: 1.0,

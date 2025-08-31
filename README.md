@@ -4,21 +4,31 @@ An intelligent CLI tool that uses AI agents to generate comprehensive Mermaid di
 
 ## ✨ Features
 
-- 🤖 **AI-Powered Analysis** - Uses advanced LLMs to understand application workflows from transcripts
-- 📊 **Multiple Diagram Types** - Generates sequence, flowchart, class, ER, state, and journey diagrams
+- 🤖 **AI Agent System** - Advanced LLM-powered agents that perform multi-step analysis with tool calling
+- 📊 **Multiple Diagram Types** - Generates sequence, flowchart, class, ER, state, journey, and graph diagrams
+- 🖼️ **Image Generation** - Automatically converts Mermaid diagrams to SVG/PNG/PDF using Mermaid CLI
 - 🔧 **Multi-Provider Support** - Works with OpenAI, Anthropic Claude, and Google Gemini
-- 🛡️ **Safe & Configurable** - Built-in safety controls, confidence thresholds, and PII redaction
-- 📁 **Structured Output** - Produces organized Markdown files with embedded Mermaid diagrams
-- ⚡ **CLI-First Design** - Simple command-line interface with dry-run capabilities
-- 🔄 **Tool Integration** - Extensible tool system for file operations and web fetching
+- 🛡️ **Enterprise-Grade Safety** - Confidence thresholds, structured output validation, PII redaction
+- 📁 **Project-Based Organization** - Dedicated directories for transcripts, outputs, and logs per project
+- ⚡ **Live Model Discovery** - Queries provider APIs for current model availability
+- 🔄 **Extensible Tool System** - Modular tools for file operations, web fetching, image generation, and user interaction
+- 📝 **Structured Output** - JSON-based agent responses with confidence scoring and action planning
 
 ## 📋 Requirements
 
 - **Go 1.24+** - Required for building and running
+- **Node.js & npm** - Required for Mermaid CLI image generation
 - **API Key** - One of the following:
   - `OPENAI_API_KEY` for GPT models
   - `ANTHROPIC_API_KEY` for Claude models
   - `GOOGLE_API_KEY` for Gemini models
+
+### Optional Dependencies
+
+- **Mermaid CLI** - For automatic SVG/PNG/PDF generation:
+  ```bash
+  npm install -g @mermaid-js/mermaid-cli
+  ```
 
 ## 🚀 Installation
 
@@ -91,6 +101,32 @@ Edit `~/mermaid-agent-documenter/config.json` to change:
 - Safety settings
 - Confidence thresholds
 
+## 🤖 Agent System
+
+The core of Mermaid Agent Documenter is its sophisticated agent system that uses advanced LLMs to analyze transcripts and generate documentation through structured tool calling.
+
+### Agent Capabilities
+
+- **Multi-Step Analysis** - Agents can perform multiple tool calls in sequence
+- **Confidence Scoring** - Each action includes confidence levels (90% threshold for file writes)
+- **Structured Output** - JSON-based responses for tool calls, final manifests, or clarification requests
+- **Safety Controls** - PII redaction, content filtering, and execution limits
+- **Tool Integration** - Access to filesystem, web content, and user interaction tools
+
+### Available Agent Tools
+
+- **File System Tools** - Read/write files, list directories, create directories
+- **Web Tools** - Fetch Mermaid documentation and external resources
+- **User Interaction** - Get clarification or additional input when needed
+- **Logging Tools** - Track agent activities and execution history
+
+### Agent Workflow
+
+1. **Analysis Phase** - Agent reads and analyzes the transcript
+2. **Planning Phase** - Agent determines appropriate diagram types and structure
+3. **Generation Phase** - Agent calls tools to create organized output files
+4. **Validation Phase** - Agent validates generated content meets quality standards
+
 ## 📖 Usage
 
 ### Basic Workflow
@@ -140,7 +176,7 @@ The API gateway then sends the JWT back to the frontend, and the user is logged 
 # From within your project directory
 ./mad run auth-walkthrough.txt --dry-run   # Preview generation
 ./mad run auth-walkthrough.txt             # Generate with confirmation
-./mad run auth-walkthrough.txt --yes       # Skip confirmation
+./mad run auth-walkthrough.txt            # Interactive: choose documentation types
 ```
 
 ## 📋 Command Reference
@@ -161,11 +197,16 @@ Run the agent on a transcript to generate documentation.
 
 Flags:
   --dry-run   Print planned actions without executing
-  --yes       Skip confirmation prompts
+
+Interactive Features:
+- Prompts for documentation type preferences before execution
+- Shows numbered list of available documentation types
+- Allows selection of specific types or automatic detection
 
 Notes:
 - If run from within a project directory, uses project's transcripts/ and out/ directories
 - If no current project is set, uses global configuration
+- Agent execution is automatic (no confirmation prompt needed)
 ```
 
 ### `mad plan [transcript]`
@@ -175,7 +216,7 @@ Plan the agent's actions without executing (shows what would be generated).
 ./mad plan transcript.txt [flags]
 
 Flags:
-  --yes       Skip confirmation prompts
+  --dry-run   Preview what the agent would generate (no execution)
 ```
 
 ### `mad validate [path]`
@@ -280,6 +321,39 @@ Query provider APIs for current model availability.
 💡 Tip: You can use these new models with:
    mad config model set <model-name>
 ```
+
+### `generateMermaidImage` (Agent Tool)
+Generate SVG/PNG/PDF images from Mermaid diagram files using Mermaid CLI.
+
+**Parameters**:
+- `inputFile`: Path to Markdown file containing Mermaid diagrams
+- `outputFile`: Path for output image file (without extension)
+- `format`: Output format - "svg", "png", or "pdf" (default: "svg")
+- `createDirs`: Create output directories if they don't exist (default: true)
+
+**Example Usage** (called by agent):
+```json
+{
+  "type": "tool_call",
+  "tool": "generateMermaidImage",
+  "args": {
+    "inputFile": "docs/diagrams/auth/login_flow.md",
+    "outputFile": "docs/diagrams/auth/login_flow",
+    "format": "svg"
+  }
+}
+```
+
+**Requirements**: Install Mermaid CLI first:
+```bash
+npm install -g @mermaid-js/mermaid-cli
+```
+
+**Troubleshooting**:
+- **"Mermaid CLI (mmdc) is not installed"**: Install with `npm install -g @mermaid-js/mermaid-cli`
+- **"No diagram found"**: Ensure input file contains valid Mermaid code blocks
+- **"Syntax error"**: Check Mermaid diagram syntax in input file
+- **Permission issues**: Ensure write permissions for output directory
 
 ### `mad config project set <project-directory>`
 Set the current project directory.
@@ -452,7 +526,23 @@ go build -o mad .
 - Check your API key is valid and has sufficient credits
 - Try with a smaller transcript file first
 - Use `--dry-run` to test without API calls
-- Check the logs in `~/mermaid-agent-documenter/logs/`
+- Check the logs in `~/mermaid-agent-documenter/logs/` or project `logs/` directory
+- Verify confidence threshold (agent requires 90% confidence for file writes)
+
+**"Model not available"**
+- Run `mad config model refresh` to get current model list
+- Use `mad config model set <model-name>` with any available model
+- Check if your API key has access to the requested model
+
+**"Tool execution failed"**
+- Ensure file permissions allow read/write operations
+- Check available disk space for generated files
+- Verify network connectivity for web-based tools
+
+**"Project not found"**
+- Run `mad config project set <project-path>` to set current project
+- Ensure project directory structure exists (transcripts/, out/, logs/)
+- Check global config.json for currentProject setting
 
 ### Getting Help
 ```bash
@@ -463,6 +553,38 @@ go build -o mad .
 ./mad run --help
 ./mad init --help
 ```
+
+## 🏗️ Architecture
+
+### System Components
+
+- **CLI Layer** (`cmd/`) - Command-line interface using Cobra
+- **Provider Layer** (`internal/providers/`) - LLM provider abstractions
+- **Agent Layer** (`internal/agent/`) - Core agent orchestration
+- **Tools Layer** (`internal/tools/`) - Modular tool system
+- **Configuration** - JSON-based config with project management
+
+### Data Flow
+
+```
+Transcript → Agent Analysis → Tool Calls → File Generation → Validation
+     ↓           ↓               ↓           ↓             ↓
+   File I/O   Confidence      File/Web     Markdown     Syntax
+   System     Threshold      Operations    Files        Check
+```
+
+### Agent Response Types
+
+- **Tool Call Response** - JSON with tool name, arguments, and confidence
+- **Final Manifest** - Complete documentation structure
+- **Clarification Request** - When agent needs additional information
+
+### Safety & Validation
+
+- **Confidence Thresholds** - 90% minimum for destructive operations
+- **Structured Output** - JSON schema validation for agent responses
+- **PII Redaction** - Automatic sensitive data removal
+- **Execution Limits** - Token budgets, time limits, and cost ceilings
 
 ## 📊 Examples
 
@@ -525,17 +647,87 @@ The CLI includes smart model management that adapts to the rapidly changing AI l
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
+### Development Setup
+
+1. **Clone and build:**
+   ```bash
+   git clone https://github.com/landanqrew/mermaid-agent-documenter.git
+   cd mermaid-agent-documenter
+   go mod tidy
+   go build -o mad .
+   ```
+
+2. **Test the CLI:**
+   ```bash
+   ./mad --help
+   ./mad init test-project
+   ```
+
+### Code Organization
+
+- **`cmd/`** - CLI commands and configuration management
+- **`internal/providers/`** - LLM provider implementations
+- **`internal/agent/`** - Core agent orchestration and structured output
+- **`internal/tools/`** - Modular tool system with schemas
+- **`AGENTS.md`** - Internal specifications for agent development
+
+### Adding New Features
+
+1. **New Commands:** Use `cobra-cli add <command-name>`
+2. **New Providers:** Implement the `LLMProvider` interface
+3. **New Tools:** Implement the `Tool` interface with JSON schema
+4. **New Models:** Update `getKnownModels()` in `cmd/config.go`
 
 ### **Model Updates**
 When contributing model updates:
 - Update the `getKnownModels()` function in `cmd/config.go`
 - Test with both known and custom model names
 - Ensure provider switching works correctly
+- Run `mad config model refresh` to verify API integration
+
+### **Agent Development**
+For agent-related changes:
+- Review `AGENTS.md` for internal specifications
+- Test with structured output validation
+- Ensure confidence thresholds are respected
+- Validate tool call sequences
+
+### Testing
+
+```bash
+# Run basic CLI tests
+go test ./...
+
+# Test with sample transcript
+./mad init test-project
+echo "Sample transcript content" > test-project/transcripts/sample.txt
+./mad run sample.txt --dry-run
+```
+
+## 🚀 Roadmap
+
+### Planned Features
+
+- **Mermaid Validation** - Syntax validation for generated diagrams
+- **Interactive Mode** - Real-time agent interaction and refinement
+- **Batch Processing** - Process multiple transcripts simultaneously
+- **Template System** - Customizable output templates and formats
+- **Plugin Architecture** - Third-party tool and provider extensions
+- **Web Interface** - Browser-based UI for easier interaction
+- **Advanced Analytics** - Usage statistics and performance metrics
+- **Model Caching** - Cache API responses for faster repeated queries
+
+### Current Status
+
+- ✅ **Core CLI** - Complete command-line interface
+- ✅ **Multi-Provider Support** - OpenAI, Anthropic, Google Gemini
+- ✅ **Agent System** - Multi-step analysis with tool calling
+- ✅ **Project Management** - Dedicated directories and organization
+- ✅ **Live Model Discovery** - API-based model list updates
+- ✅ **Safety Controls** - Confidence thresholds and validation
+- 🚧 **Mermaid Validation** - Syntax checking (in progress)
+- 🚧 **Logging System** - Comprehensive execution tracking (in progress)
+- 🚧 **Unit Tests** - Test coverage for pure functions (in progress)
 
 ## 📄 License
 
@@ -544,6 +736,11 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## 🙏 Acknowledgments
 
 - Built with [Cobra CLI](https://cobra.dev/) for the command-line interface
-- Uses [Google GenAI](https://ai.google.dev/) for Gemini integration
-- Mermaid diagram syntax validation and rendering
-- Flexible model management inspired by modern AI tooling patterns
+- Uses [Google GenAI SDK](https://ai.google.dev/) for Gemini integration
+- Uses [OpenAI Go SDK](https://github.com/sashabaranov/go-openai) for GPT models
+- Uses [Anthropic Go SDK](https://github.com/anthropics/anthropic-sdk-go) for Claude models
+- Uses [Mermaid CLI](https://github.com/mermaid-js/mermaid-cli) for diagram image generation
+- Agent system inspired by modern LLM agent architectures
+- Flexible model management with live API discovery
+- Structured output system for reliable agent responses
+- Modular tool system for extensible agent capabilities

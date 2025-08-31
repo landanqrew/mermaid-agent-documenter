@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,6 +60,9 @@ func (t *WriteFileContentsTool) Execute(args map[string]interface{}) ToolResult 
 		}
 	}
 
+	// Debug: print what we're trying to write
+	fmt.Printf("📝 Writing to: %s (%d chars)\n", path, len(content))
+
 	createDirs := true
 	if cd, exists := args["createDirs"]; exists {
 		if cdBool, ok := cd.(bool); ok {
@@ -66,7 +70,7 @@ func (t *WriteFileContentsTool) Execute(args map[string]interface{}) ToolResult 
 		}
 	}
 
-	overwrite := "explicit"
+	overwrite := "allow" // Default to allow for agent workflow
 	if ow, exists := args["overwrite"]; exists {
 		if owStr, ok := ow.(string); ok && (owStr == "explicit" || owStr == "allow") {
 			overwrite = owStr
@@ -114,7 +118,6 @@ func (t *WriteFileContentsTool) Execute(args map[string]interface{}) ToolResult 
 			Error:   "Failed to write file: " + err.Error(),
 		}
 	}
-
 	return ToolResult{
 		Success: true,
 		Data: map[string]interface{}{

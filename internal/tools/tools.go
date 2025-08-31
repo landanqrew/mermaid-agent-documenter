@@ -39,6 +39,7 @@ func init() {
 	RegisterTool(&GetUserInputTool{})
 	RegisterTool(&FetchMermaidDocumentationTool{})
 	RegisterTool(&LogEventTool{})
+	RegisterTool(&GenerateMermaidImageTool{})
 }
 
 // ExecuteTool executes a tool by name with JSON arguments
