@@ -60,16 +60,25 @@ func readTranscript(path string, config *Config) (string, error) {
 	var fullPath string
 
 	if config.CurrentProject != nil {
-		// Use current project's transcripts directory
-		transcriptsDir := filepath.Join(config.CurrentProject.RootDir, "transcripts")
+		// Use current project's directory as base
+		projectRoot := config.CurrentProject.RootDir
 
-		// If path doesn't contain directory separators, assume it's in transcripts dir
-		if !strings.Contains(path, "/") && !strings.Contains(path, "\\") {
-			fullPath = filepath.Join(transcriptsDir, path)
-		} else {
+		// Handle different path formats
+		if filepath.IsAbs(path) {
+			// Absolute path - use as-is
 			fullPath = path
+		} else if strings.HasPrefix(path, "transcripts/") || strings.HasPrefix(path, "transcripts\\") {
+			// Already includes transcripts/ - use as-is relative to project root
+			fullPath = filepath.Join(projectRoot, path)
+		} else if !strings.Contains(path, "/") && !strings.Contains(path, "\\") {
+			// Just filename - assume it's in transcripts directory
+			fullPath = filepath.Join(projectRoot, "transcripts", path)
+		} else {
+			// Relative path with directories - use relative to project root
+			fullPath = filepath.Join(projectRoot, path)
 		}
 	} else {
+		// No current project - use path as-is (backward compatibility)
 		fullPath = path
 	}
 
@@ -85,7 +94,7 @@ func readTranscript(path string, config *Config) (string, error) {
 	data, err := os.ReadFile(fullPath)
 	if err != nil {
 		if config.CurrentProject != nil && strings.Contains(err.Error(), "no such file") {
-			return "", fmt.Errorf("transcript file not found. Make sure '%s' exists in the '%s/transcripts/' directory", path, config.CurrentProject.Name)
+			return "", fmt.Errorf("transcript file not found at '%s'. When using a project, files are looked for in '%s/transcripts/' directory. You can also specify full paths like 'transcripts/%s' or absolute paths", fullPath, config.CurrentProject.RootDir, path)
 		}
 		return "", err
 	}
@@ -102,12 +111,15 @@ var runCmd = &cobra.Command{
 The agent will analyze your transcript and generate relevant documentation and diagrams.
 You can optionally specify the types of documentation you want to generate.
 
-If a current project is set in the global config, the transcript will be read from the project's
-transcripts/ directory and output will be saved to the project's out/ directory.
+PATH RESOLUTION:
+When a current project is set, the command automatically looks for transcripts in the project's
+transcripts/ directory. You can specify just the filename and it will be resolved automatically.
 
 Examples:
-  mad run transcript.txt                    # Use current project or global config
-  mad run auth.txt --dry-run              # Dry run with current project`,
+  mad run transcript.txt                    # Looks in <project>/transcripts/transcript.txt
+  mad run transcripts/my-file.txt          # Explicit path: <project>/transcripts/my-file.txt
+  mad run /full/path/to/file.txt           # Absolute path (works with/without project)
+  mad run ../other/file.txt               # Relative to project root (when project is set)`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		dryRun, _ := cmd.Flags().GetBool("dry-run")

@@ -63,6 +63,12 @@ func (t *GenerateMermaidImageTool) Execute(args map[string]interface{}) ToolResu
 		}
 	}
 
+	if !strings.Contains(outputFile, "out/") {
+		parts := strings.Split(outputFile, "/")
+		parts[len(parts)-1] = "out/" + parts[len(parts)-1]
+		outputFile = strings.Join(parts, "/")
+	}
+
 	format := "svg" // default
 	if fmt, exists := args["format"].(string); exists && (fmt == "svg" || fmt == "png" || fmt == "pdf") {
 		format = fmt
@@ -141,20 +147,55 @@ func (t *GenerateMermaidImageTool) Execute(args map[string]interface{}) ToolResu
 	output, err := cmd.CombinedOutput()
 
 	if err != nil {
-		// Check for common Mermaid CLI errors
+		// Parse Mermaid CLI errors for more specific feedback
 		errorMsg := string(output)
+
+		// Check for specific error patterns
 		if strings.Contains(errorMsg, "No diagram found") {
 			return ToolResult{
 				Success: false,
-				Error:   fmt.Sprintf("No Mermaid diagrams found in file: %s", inputFile),
+				Error:   fmt.Sprintf("No Mermaid diagrams found in file: %s. Check that diagrams are properly formatted with ```mermaid code blocks.", inputFile),
 			}
 		}
-		if strings.Contains(errorMsg, "Syntax error") {
+
+		// Check for multiple diagram parsing issues
+		if strings.Contains(errorMsg, "Found 2 mermaid charts") || strings.Contains(errorMsg, "Found 3 mermaid charts") {
 			return ToolResult{
 				Success: false,
-				Error:   fmt.Sprintf("Mermaid syntax error in file %s: %s", inputFile, errorMsg),
+				Error:   fmt.Sprintf("Multiple diagram types detected in file: %s. Mermaid CLI struggles with multiple diagram types in one file. Split into separate files: one for sequence diagrams, one for ER diagrams, etc.", inputFile),
 			}
 		}
+
+		// Extract line number and error details
+		if strings.Contains(errorMsg, "Parse error on line") {
+			return ToolResult{
+				Success: false,
+				Error:   fmt.Sprintf("Mermaid parsing error: %s. Fix the syntax error on the specified line. For ER diagrams, ensure attributes are simple names without types (use 'id name' not 'int id; string name').", errorMsg),
+			}
+		}
+
+		if strings.Contains(errorMsg, "Syntax error") || strings.Contains(errorMsg, "Parser3.parseError") {
+			return ToolResult{
+				Success: false,
+				Error:   fmt.Sprintf("Mermaid syntax error: %s. Common issues: ER diagram attributes should not have types (use 'id name' not 'int id; string name'), avoid special characters in participant names, ensure proper relationship syntax.", errorMsg),
+			}
+		}
+
+		if strings.Contains(errorMsg, "exit status 1") {
+			return ToolResult{
+				Success: false,
+				Error:   fmt.Sprintf("Mermaid CLI failed to generate image. Full error: %s", errorMsg),
+			}
+		}
+
+		// Check for output file creation failures
+		if strings.Contains(errorMsg, "Output file was not created") {
+			return ToolResult{
+				Success: false,
+				Error:   fmt.Sprintf("SVG generation failed - output file was not created. This may be due to environment limitations, permissions, or tool issues. Try simplifying the diagram (sequence diagrams are most reliable) or check file permissions."),
+			}
+		}
+
 		return ToolResult{
 			Success: false,
 			Error:   fmt.Sprintf("Mermaid CLI error: %v\nOutput: %s", err, errorMsg),

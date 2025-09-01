@@ -34,11 +34,12 @@ type StructuredOutput struct {
 }
 
 type MermaidDocumenterAgent struct {
-	Provider   providers.LLMProvider
-	Config     *AgentConfig
-	RunID      string
-	StepCount  int
-	Transcript string
+	Provider         providers.LLMProvider
+	Config           *AgentConfig
+	RunID            string
+	StepCount        int
+	Transcript       string
+	consecutiveFails int
 }
 
 type AgentConfig struct {
@@ -133,15 +134,23 @@ func (a *MermaidDocumenterAgent) Run(ctx context.Context) error {
 
 			if result.Success && result.Data != nil {
 				fmt.Printf("✅ Tool completed successfully\n")
+				a.consecutiveFails = 0 // Reset failure counter on success
 			} else if !result.Success {
 				fmt.Printf("❌ Tool failed: %s\n", result.Error)
+				a.consecutiveFails++
+
+				// If too many consecutive failures, force final manifest
+				if a.consecutiveFails >= 3 {
+					fmt.Printf("⚠️  Too many consecutive failures (%d), forcing final manifest\n", a.consecutiveFails)
+					return nil // This will trigger final manifest processing
+				}
 
 				// If the tool failed, add error context to guide the next action
 				errorMsg := fmt.Sprintf("Tool execution failed: %s. ", result.Error)
 				if strings.Contains(result.Error, "Mermaid CLI error") {
 					errorMsg += "This is likely due to invalid Mermaid syntax. Check your diagram syntax, especially ER diagrams which should use semicolons (;) not commas (,) to separate attributes. "
 				}
-				errorMsg += "Please fix the issue and try again, or return a final manifest if you cannot resolve it."
+				errorMsg += "Please fix the issue and try again, or return a final manifest if you cannot resolve it. You MUST respond with valid JSON tool calls or final manifest."
 
 				conversation = append(conversation, map[string]interface{}{
 					"role":    "system",
@@ -211,12 +220,45 @@ REQUIRED SEQUENCE:
 2. SECOND: Use generateMermaidImage to convert the Markdown file to SVG images
 3. THIRD: Return final manifest ONLY after both files are created
 
+FILE PATH REQUIREMENTS:
+- ALWAYS use the EXACT filename you created in writeFileContents (e.g., "summary.md")
+- Do NOT use relative paths or modify the filename
+
 MERMAID SYNTAX RULES:
-- For ER diagrams: Use semicolons (;) to separate attributes: Site {int id; string name}
-- Do NOT use commas (,) in attribute lists
-- Use proper Mermaid syntax to avoid parsing errors
+- For ER diagrams: Use simple attribute names without types: Site {id; name}
+- Avoid complex ER relationships - use simple ||--o{ syntax
+- For sequence diagrams: Use simple participant names without spaces
+- Keep syntax simple and avoid special characters
+- Test syntax mentally: Would this parse correctly?
+
+ERROR HANDLING:
+- If generateMermaidImage fails, the error message will contain specific syntax issues
+- Fix the identified syntax problems and try again
+- Focus on the sequence diagram first if ER diagram fails
 
 IMPORTANT: You MUST call generateMermaidImage as a separate tool call after creating the Markdown file. Do NOT claim SVG generation in the final manifest unless you actually called the generateMermaidImage tool.
+
+MERMAID DIAGRAM BEST PRACTICES:
+- Use simple sequence diagrams when possible - they are most reliable
+- Avoid complex ER diagrams with data types (use simple attribute names only)
+- Limit files to ONE diagram type to avoid parsing conflicts
+- For ER diagrams: Use format "Entity { attribute1 attribute2 }" without types or semicolons
+- For relationships: Use simple "Entity1 -- Entity2 : description" format
+- Test diagrams mentally: Would this parse correctly in Mermaid?`
+
+	// Add OpenAI-specific instructions for tool calling sequence
+	if a.Config.Provider == "openai" {
+		basePrompt += `
+
+OPENAI-SPECIFIC INSTRUCTIONS:
+- ALWAYS follow this EXACT sequence: writeFileContents -> generateMermaidImage -> final manifest
+- NEVER call generateMermaidImage before creating the file with writeFileContents
+- NEVER skip steps or combine tool calls in a single response
+- If you receive an error about file not existing, create the file first before generating images
+- Wait for tool results before proceeding to the next step`
+	}
+
+	basePrompt += `
 
 Return ONLY JSON:
 
@@ -379,13 +421,16 @@ func (a *MermaidDocumenterAgent) modifyFilePaths(args map[string]interface{}) ma
 		modifiedArgs[k] = v
 	}
 
-	// Check if there's a path argument and modify it if it's relative
-	if pathVal, exists := args["path"]; exists {
-		if pathStr, ok := pathVal.(string); ok {
-			// If path is relative (doesn't start with / or ~), prepend output directory
-			if !strings.HasPrefix(pathStr, "/") && !strings.HasPrefix(pathStr, "~") && !filepath.IsAbs(pathStr) {
-				modifiedPath := filepath.Join(a.Config.OutputDir, pathStr)
-				modifiedArgs["path"] = modifiedPath
+	// Check for path arguments that need modification (handles both "path" and "inputFile")
+	pathArgs := []string{"path", "inputFile"}
+	for _, argName := range pathArgs {
+		if pathVal, exists := args[argName]; exists {
+			if pathStr, ok := pathVal.(string); ok {
+				// If path is relative (doesn't start with / or ~), prepend output directory
+				if !strings.HasPrefix(pathStr, "/") && !strings.HasPrefix(pathStr, "~") && !filepath.IsAbs(pathStr) {
+					modifiedPath := filepath.Join(a.Config.OutputDir, pathStr)
+					modifiedArgs[argName] = modifiedPath
+				}
 			}
 		}
 	}

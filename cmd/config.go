@@ -524,13 +524,21 @@ you can still set it with 'mad config model set <model>' and the system will att
 		fmt.Printf("🧠 Models for %s:\n", strings.Title(config.Provider))
 		fmt.Println()
 
-		knownModels := getKnownModels()
-		models := knownModels[config.Provider]
+		provider := providers.GetProvider(config.Provider)
 
-		if models == nil {
+		knownModels, err := provider.ListModels(context.Background(), config.Secrets[config.Provider])
+		if err != nil {
+			fmt.Printf("Error listing models: %v\n", err)
+			os.Exit(1)
+		}
+		if len(knownModels) == 0 {
 			fmt.Printf("No known models defined for provider: %s\n", config.Provider)
 			fmt.Println("You can still set custom models with 'mad config model set <model>'")
 			return
+		}
+		models := make([]string, len(knownModels))
+		for i, model := range knownModels {
+			models[i] = model.ID
 		}
 
 		fmt.Println("📋 Known Models:")

@@ -3,6 +3,7 @@ package providers
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"google.golang.org/genai"
 )
@@ -61,37 +62,44 @@ func (p *GeminiProvider) ListModels(ctx context.Context, apiKey string) ([]Model
 	// Retrieve the list of models.
 	models, err := client.Models.List(ctx, &genai.ListModelsConfig{})
 	if err != nil {
-		return knownModels, fmt.Errorf("Error listing models: %w", err)
-	}
-
-	fmt.Println("List of models that support generateContent:")
-	for _, m := range models.Items {
-		for _, action := range m.SupportedActions {
-			if action == "generateContent" {
-				fmt.Println(m.Name)
-				break
-			}
-		}
+		return knownModels, fmt.Errorf("error listing models: %w", err)
 	}
 
 	modelInfo := []ModelInfo{}
+	// fmt.Println("List of models that support generateContent:")
+	for _, m := range models.Items {
+		for _, action := range m.SupportedActions {
+			if action == "generateContent" {
+				// fmt.Println(m.Name)
+				break
+			}
+		}
+		modelInfo = append(modelInfo, ModelInfo{
+			ID:   strings.ReplaceAll(m.Name, "models/", ""),
+			Name: strings.ReplaceAll(m.DisplayName, "models/", ""),
+		})
+		fmt.Printf("Model: %s, Display Name: %s\n", modelInfo[len(modelInfo) - 1].ID, modelInfo[len(modelInfo) - 1].Name)
+	}
+
+
+    /*
 	fmt.Println("\nList of models that support embedContent:")
 	for _, m := range models.Items {
 		for _, action := range m.SupportedActions {
 			if action == "embedContent" {
-				modelInfo = append(modelInfo, ModelInfo{
-					ID:   m.Name,
-					Name: m.Name,
-				})
+				name := strings.ReplaceAll(m.DisplayName, "models/", "")
+				id := strings.ReplaceAll(m.Name, "models/", "")
+				fmt.Printf("Model: %s, Display Name: %s\n", id, name)
 				break
 			}
 		}
 	}
+	*/
 
 	if len(modelInfo) > 0 {
 		return modelInfo, nil
 	}
 
 
-	return knownModels, fmt.Errorf("No models found")
+	return knownModels, fmt.Errorf("no models found")
 }
