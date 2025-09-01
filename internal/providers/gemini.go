@@ -35,11 +35,6 @@ func (p *GeminiProvider) GenerateContent(ctx context.Context, prompt string, mod
 }
 
 func (p *GeminiProvider) ListModels(ctx context.Context, apiKey string) ([]ModelInfo, error) {
-	// Google Gemini doesn't have a direct models API endpoint in the same way
-	// We'll return the known Gemini models for now
-	// In a future version, we could use the REST API directly
-
-	// For now, return our known models since Gemini's SDK doesn't expose ListModels
 	knownModels := []ModelInfo{
 		{ID: "gemini-1.5-pro", Name: "Gemini 1.5 Pro"},
 		{ID: "gemini-1.5-flash", Name: "Gemini 1.5 Flash"},
@@ -49,5 +44,54 @@ func (p *GeminiProvider) ListModels(ctx context.Context, apiKey string) ([]Model
 		{ID: "gemini-pro-vision", Name: "Gemini Pro Vision"},
 	}
 
-	return knownModels, nil
+	if apiKey == "" {
+		return knownModels, fmt.Errorf("API key is required")
+	}
+
+	// ctx = context.Background()
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey:  apiKey,
+		Backend: genai.BackendGeminiAPI,
+	})
+	if err != nil {
+		
+	}
+
+
+	// Retrieve the list of models.
+	models, err := client.Models.List(ctx, &genai.ListModelsConfig{})
+	if err != nil {
+		return knownModels, fmt.Errorf("Error listing models: %w", err)
+	}
+
+	fmt.Println("List of models that support generateContent:")
+	for _, m := range models.Items {
+		for _, action := range m.SupportedActions {
+			if action == "generateContent" {
+				fmt.Println(m.Name)
+				break
+			}
+		}
+	}
+
+	modelInfo := []ModelInfo{}
+	fmt.Println("\nList of models that support embedContent:")
+	for _, m := range models.Items {
+		for _, action := range m.SupportedActions {
+			if action == "embedContent" {
+				modelInfo = append(modelInfo, ModelInfo{
+					ID:   m.Name,
+					Name: m.Name,
+				})
+				break
+			}
+		}
+	}
+
+	if len(modelInfo) > 0 {
+		return modelInfo, nil
+	}
+
+
+	return knownModels, fmt.Errorf("No models found")
 }

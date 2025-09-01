@@ -296,15 +296,11 @@ func (a *MermaidDocumenterAgent) cleanMarkdownCodeBlocks(response string) string
 		// Remove opening marker
 		response = strings.TrimPrefix(response, "```json")
 		// Remove closing marker if present
-		if strings.HasSuffix(response, "```") {
-			response = strings.TrimSuffix(response, "```")
-		}
+		response = strings.TrimSuffix(response, "```")
 	} else if strings.HasPrefix(response, "```") {
 		// Remove generic code block markers
 		response = strings.TrimPrefix(response, "```")
-		if strings.HasSuffix(response, "```") {
-			response = strings.TrimSuffix(response, "```")
-		}
+		response = strings.TrimSuffix(response, "```")
 	}
 
 	return strings.TrimSpace(response)
