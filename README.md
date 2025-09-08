@@ -36,6 +36,7 @@ An intelligent CLI tool that uses AI agents to generate comprehensive Mermaid di
 ```bash
 go install github.com/landanqrew/mermaid-agent-documenter@latest
 ```
+> PLEASE NOTE: OPTION ONE WILL MEAN THE BASE COMMAND IS `mermaid-agent-documenter` RATHER THAN `mad`
 
 ### Option 2: Build from Source
 ```bash
@@ -47,7 +48,7 @@ cd mermaid-agent-documenter
 go build -o mad .
 
 # (Optional) Move to PATH
-sudo mv mad /usr/local/bin/
+sudo mv mad $PATH
 ```
 
 ## ⚙️ Setup and Configuration
