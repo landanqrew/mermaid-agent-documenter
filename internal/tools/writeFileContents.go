@@ -72,7 +72,7 @@ func (t *WriteFileContentsTool) Name() string {
 }
 
 func (t *WriteFileContentsTool) Description() string {
-	return "Write content to a file"
+	return "Write content to a file. Naming convention (unless otherwise specified) is <transcript-name>_<documentation_type>.<extension_type (usually md)>"
 }
 
 func (t *WriteFileContentsTool) Schema() map[string]interface{} {
@@ -81,7 +81,7 @@ func (t *WriteFileContentsTool) Schema() map[string]interface{} {
 		"properties": map[string]interface{}{
 			"path": map[string]interface{}{
 				"type":        "string",
-				"description": "Path to the file to write",
+				"description": "Path to the file to write. File naming convention (unless otherwise specified) is (in lower snake case) <transcript-name>_<documentation_type>.<extension_type (usually md)>",
 			},
 			"content": map[string]interface{}{
 				"type":        "string",

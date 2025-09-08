@@ -14,7 +14,7 @@ func (t *FetchMermaidDocumentationTool) Name() string {
 }
 
 func (t *FetchMermaidDocumentationTool) Description() string {
-	return "Fetch Mermaid documentation and syntax information"
+	return "Fetch Mermaid documentation and syntax information. Use this tool when you run into a syntax error or need to know more about Mermaid."
 }
 
 func (t *FetchMermaidDocumentationTool) Schema() map[string]any {

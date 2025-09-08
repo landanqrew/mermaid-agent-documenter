@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,6 +10,41 @@ import (
 )
 
 type GenerateMermaidImageTool struct{}
+
+// getProjectOutDir returns the project-specific out directory path
+func (t *GenerateMermaidImageTool) getProjectOutDir() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "" // fallback to current directory
+	}
+
+	configPath := filepath.Join(homeDir, "mermaid-agent-documenter", "config.json")
+	if _, err := os.Stat(configPath); err != nil {
+		return "" // no config found, use current directory
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return "" // failed to read config
+	}
+
+	var cfg struct {
+		CurrentProject *struct {
+			RootDir string `json:"rootDir"`
+		} `json:"currentProject,omitempty"`
+	}
+
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return "" // failed to parse config
+	}
+
+	if cfg.CurrentProject == nil {
+		return "" // no current project
+	}
+
+	// Return the project's out directory
+	return filepath.Join(cfg.CurrentProject.RootDir, "out")
+}
 
 func (t *GenerateMermaidImageTool) Name() string {
 	return "generateMermaidImage"
@@ -63,15 +99,27 @@ func (t *GenerateMermaidImageTool) Execute(args map[string]interface{}) ToolResu
 		}
 	}
 
-	if !strings.Contains(outputFile, "out/") {
-		parts := strings.Split(outputFile, "/")
-		parts[len(parts)-1] = "out/" + parts[len(parts)-1]
-		outputFile = strings.Join(parts, "/")
-	}
-
 	format := "svg" // default
 	if fmt, exists := args["format"].(string); exists && (fmt == "svg" || fmt == "png" || fmt == "pdf") {
 		format = fmt
+	}
+
+	// Get the project-specific out directory
+	projectOutDir := t.getProjectOutDir()
+	if projectOutDir != "" {
+		// Use project-specific out directory
+		filename := filepath.Base(outputFile)
+		if !strings.HasSuffix(outputFile, "."+format) {
+			filename = filename + "." + format
+		}
+		outputFile = filepath.Join(projectOutDir, filename)
+	} else {
+		// Fallback: if no project is set, use current working directory with out/ prefix
+		if !strings.Contains(outputFile, "out/") {
+			parts := strings.Split(outputFile, "/")
+			parts[len(parts)-1] = "out/" + parts[len(parts)-1]
+			outputFile = strings.Join(parts, "/")
+		}
 	}
 
 	createDirs := true
@@ -133,6 +181,7 @@ func (t *GenerateMermaidImageTool) Execute(args map[string]interface{}) ToolResu
 
 	// Construct the full output path with extension
 	fullOutputPath := outputFile
+	// Extension should already be handled above, but add it if missing
 	if !strings.HasSuffix(fullOutputPath, "."+format) {
 		fullOutputPath = fullOutputPath + "." + format
 	}
@@ -192,7 +241,7 @@ func (t *GenerateMermaidImageTool) Execute(args map[string]interface{}) ToolResu
 		if strings.Contains(errorMsg, "Output file was not created") {
 			return ToolResult{
 				Success: false,
-				Error:   fmt.Sprintf("SVG generation failed - output file was not created. This may be due to environment limitations, permissions, or tool issues. Try simplifying the diagram (sequence diagrams are most reliable) or check file permissions."),
+				Error:   "SVG generation failed - output file was not created. This may be due to environment limitations, permissions, or tool issues. Try simplifying the diagram (sequence diagrams are most reliable) or check file permissions.",
 			}
 		}
 
