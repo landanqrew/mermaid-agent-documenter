@@ -32,11 +32,9 @@ An intelligent CLI tool that uses AI agents to generate comprehensive Mermaid di
 
 ## 🚀 Installation
 
-### Option 1: Download Pre-built Binary
+### Option 1: Go Install (must have go installed. visit https://webinstall.dev/golang/ if not)
 ```bash
-# Download from GitHub releases (coming soon)
-# curl -L https://github.com/landanqrew/mermaid-agent-documenter/releases/download/v1.0.0/mad-linux-amd64 -o mad
-# chmod +x mad
+go install github.com/landanqrew/mermaid-agent-documenter@latest
 ```
 
 ### Option 2: Build from Source
@@ -57,7 +55,7 @@ sudo mv mad /usr/local/bin/
 ### 1. Initialize the Global Environment
 ```bash
 # Initialize global configuration
-./mad init
+mad init
 ```
 
 This creates:
@@ -67,10 +65,10 @@ This creates:
 ### 2. Create a Project
 ```bash
 # Create a new project in the current directory
-./mad init my-project
+mad init my-project
 
 # Or create a project for an e-commerce application
-./mad init ecommerce-app
+mad init ecommerce-app
 ```
 
 This creates:
@@ -140,17 +138,17 @@ The core of Mermaid Agent Documenter is its sophisticated agent system that uses
 
 ```bash
 # 1. Create a project
-./mad init my-auth-app
+mad init my-auth-app
 
 # 2. Add your transcript file
 echo "This is a walkthrough of our user authentication system..." > my-auth-app/transcripts/auth-walkthrough.txt
 
 # 3. Generate documentation
 cd my-auth-app
-../mad run auth-walkthrough.txt --dry-run  # Preview what will be generated
+.mad run auth-walkthrough.txt --dry-run  # Preview what will be generated
 
 # 4. Generate the actual documentation
-../mad run auth-walkthrough.txt
+.mad run auth-walkthrough.txt
 
 # 5. Check the output
 ls out/docs/diagrams/
@@ -174,9 +172,9 @@ The API gateway then sends the JWT back to the frontend, and the user is logged 
 ### Generate Documentation
 ```bash
 # From within your project directory
-./mad run auth-walkthrough.txt --dry-run   # Preview generation
-./mad run auth-walkthrough.txt             # Generate with confirmation
-./mad run auth-walkthrough.txt            # Interactive: choose documentation types
+mad run auth-walkthrough.txt --dry-run   # Preview generation
+mad run auth-walkthrough.txt             # Generate with confirmation
+mad run auth-walkthrough.txt            # Interactive: choose documentation types
 ```
 
 ## 📋 Command Reference
@@ -185,15 +183,15 @@ The API gateway then sends the JWT back to the frontend, and the user is logged 
 Initialize a new project or the global environment.
 
 ```bash
-./mad init                    # Initialize global environment
-./mad init my-project         # Create new project called "my-project"
+mad init                    # Initialize global environment
+mad init my-project         # Create new project called "my-project"
 ```
 
 ### `mad run [transcript]`
 Run the agent on a transcript to generate documentation.
 
 ```bash
-./mad run transcript.txt [flags]
+mad run transcript.txt [flags]
 
 Flags:
   --dry-run   Print planned actions without executing
@@ -213,7 +211,7 @@ Notes:
 Plan the agent's actions without executing (shows what would be generated).
 
 ```bash
-./mad plan transcript.txt [flags]
+mad plan transcript.txt [flags]
 
 Flags:
   --dry-run   Preview what the agent would generate (no execution)
@@ -223,39 +221,39 @@ Flags:
 Validate a generated manifest or Mermaid file for syntax correctness.
 
 ```bash
-./mad validate docs/diagrams/auth/sequence-login.md
+mad validate docs/diagrams/auth/sequence-login.md
 ```
 
 ### `mad config secrets set <provider> <api-key>`
 Set API key for a model provider.
 
 ```bash
-./mad config secrets set openai "sk-your-openai-key-here"
-./mad config secrets set anthropic "sk-ant-your-anthropic-key"
-./mad config secrets set google "your-google-api-key"
+mad config secrets set openai "sk-your-openai-key-here"
+mad config secrets set anthropic "sk-ant-your-anthropic-key"
+mad config secrets set google "your-google-api-key"
 ```
 
 ### `mad config secrets list`
 List configured API keys (without showing actual keys).
 
 ```bash
-./mad config secrets list
+mad config secrets list
 ```
 
 ### `mad config provider set <provider>`
 Set the default LLM provider.
 
 ```bash
-./mad config provider set openai      # Use OpenAI models
-./mad config provider set anthropic   # Use Anthropic models
-./mad config provider set google      # Use Google models
+mad config provider set openai      # Use OpenAI models
+mad config provider set anthropic   # Use Anthropic models
+mad config provider set google      # Use Google models
 ```
 
 ### `mad config provider list`
 List available providers and current selection.
 
 ```bash
-./mad config provider list
+mad config provider list
 ```
 
 ### `mad config model set <model>`
@@ -263,19 +261,19 @@ Set the model for the current provider.
 
 ```bash
 # For OpenAI
-./mad config model set gpt-4o
-./mad config model set gpt-4o-mini
+mad config model set gpt-4o
+mad config model set gpt-4o-mini
 
 # For Anthropic
-./mad config model set claude-3-5-sonnet-20241022
-./mad config model set claude-3-haiku-20240307
+mad config model set claude-3-5-sonnet-20241022
+mad config model set claude-3-haiku-20240307
 
 # For Google
-./mad config model set gemini-1.5-pro
-./mad config model set gemini-1.5-flash
+mad config model set gemini-1.5-pro
+mad config model set gemini-1.5-flash
 
 # You can also use any custom model name
-./mad config model set my-custom-model
+mad config model set my-custom-model
 ```
 
 **Note**: You can use any model name that the provider supports. The system will attempt to use it even if it's not in our known models list.
@@ -284,7 +282,7 @@ Set the model for the current provider.
 List available models for the current provider.
 
 ```bash
-./mad config model list
+mad config model list
 ```
 
 Shows both "known" models (from our curated list) and "custom" models you've configured.
@@ -293,7 +291,7 @@ Shows both "known" models (from our curated list) and "custom" models you've con
 Query provider APIs for current model availability.
 
 ```bash
-./mad config model refresh
+mad config model refresh
 ```
 
 **Features**:
@@ -359,8 +357,8 @@ npm install -g @mermaid-js/mermaid-cli
 Set the current project directory.
 
 ```bash
-./mad config project set /path/to/my-project
-./mad config project set ./my-auth-app
+mad config project set /path/to/my-project
+mad config project set ./my-auth-app
 ```
 
 ## 📁 Output Structure
@@ -504,8 +502,8 @@ export OPENAI_API_KEY="your-key-here"
 **"Command not found"**
 ```bash
 # Make sure the binary is executable and in PATH
-chmod +x ./mad
-./mad --help
+chmod +x mad
+mad --help
 
 # Or move to PATH
 sudo cp mad /usr/local/bin/mad
@@ -547,11 +545,11 @@ go build -o mad .
 ### Getting Help
 ```bash
 # Show all commands
-./mad --help
+mad --help
 
 # Show command-specific help
-./mad run --help
-./mad init --help
+mad run --help
+mad init --help
 ```
 
 ## 🏗️ Architecture
@@ -627,14 +625,14 @@ The CLI includes smart model management that adapts to the rapidly changing AI l
 ### **Model Commands**
 ```bash
 # List all available models (known + custom)
-./mad config model list
+mad config model list
 
 # Set any model (known or custom)
-./mad config model set gpt-4o                    # Known model
-./mad config model set my-custom-model           # Custom model
+mad config model set gpt-4o                    # Known model
+mad config model set my-custom-model           # Custom model
 
 # Query live API for current models
-./mad config model refresh                       # Get live model list
+mad config model refresh                       # Get live model list
 ```
 
 ### **How It Works**
@@ -659,8 +657,8 @@ The CLI includes smart model management that adapts to the rapidly changing AI l
 
 2. **Test the CLI:**
    ```bash
-   ./mad --help
-   ./mad init test-project
+   mad --help
+   mad init test-project
    ```
 
 ### Code Organization
@@ -699,9 +697,9 @@ For agent-related changes:
 go test ./...
 
 # Test with sample transcript
-./mad init test-project
+mad init test-project
 echo "Sample transcript content" > test-project/transcripts/sample.txt
-./mad run sample.txt --dry-run
+mad run sample.txt --dry-run
 ```
 
 ## 🚀 Roadmap

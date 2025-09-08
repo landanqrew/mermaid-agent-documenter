@@ -1,6 +1,5 @@
 /*
-Copyright © 2025 NAME HERE <EMAIL ADDRESS>
-
+Mermaid Agent Documenter - A CLI tool for generating Mermaid documentation from transcripts
 */
 package main
 
